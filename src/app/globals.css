@@ -1,26 +1,79 @@
+/* Google Fonts - Must be first */
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700&display=swap');
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Meta Blue Theme Colors */
+  --color-primary: #1877F2;
+  --color-primary-hover: #166FE5;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #65676B;
+  --color-accent: #42B72A;
+  --color-background: #FFFFFF;
+  --color-surface: #F0F2F5;
+  --color-foreground: #050505;
+  --color-muted: #E4E6EB;
+  --color-muted-foreground: #65676B;
+  --color-border: #CED0D4;
+  --color-destructive: #DC2626;
+  --color-ring: #1877F2;
+  --color-success: #42B72A;
+  --color-warning: #F59E0B;
+  --color-error: #DC2626;
+  --color-info: #1877F2;
+  
+  /* Spacing */
+  --radius: 0.5rem;
+  
+  /* Fonts */
+  --font-heading: 'Rubik', sans-serif;
+  --font-body: 'Nunito Sans', sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@custom-variant dark (&:is(.dark *));
+
+.dark {
+  --color-primary: #4A9EFF;
+  --color-primary-hover: #3A8EEF;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #B0B3B8;
+  --color-accent: #5FD068;
+  --color-background: #18191A;
+  --color-surface: #242526;
+  --color-foreground: #E4E6EB;
+  --color-muted: #3A3B3C;
+  --color-muted-foreground: #B0B3B8;
+  --color-border: #3E4042;
+  --color-destructive: #EF4444;
+  --color-ring: #4A9EFF;
+  --color-success: #5FD068;
+  --color-warning: #FBBF24;
+  --color-error: #EF4444;
+  --color-info: #4A9EFF;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+  
+  html {
+    @apply antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }
