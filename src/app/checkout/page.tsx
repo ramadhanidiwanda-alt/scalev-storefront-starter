@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api/client';
+import { formatPrice } from '@/lib/api/helpers';
 import type { Province, City, Subdistrict, ShippingMethod, PaymentMethod } from '@/lib/api/types';
 
 export default function CheckoutPage() {
@@ -141,6 +142,11 @@ export default function CheckoutPage() {
     return null;
   }
 
+  const cartTotal = typeof cart.total === 'number' ? cart.total : parseFloat(cart.total || '0');
+  const selectedShipping = shippingMethods.find(m => m.id.toString() === formData.shipping_method_id);
+  const shippingCost = selectedShipping ? (typeof selectedShipping.cost === 'number' ? selectedShipping.cost : parseFloat(selectedShipping.cost || '0')) : 0;
+  const grandTotal = cartTotal + shippingCost;
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 
@@ -165,9 +171,9 @@ export default function CheckoutPage() {
                   <Label htmlFor="name">Full Name *</Label>
                   <Input
                     id="name"
-                    required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
                   />
                 </div>
                 
@@ -176,9 +182,9 @@ export default function CheckoutPage() {
                   <Input
                     id="email"
                     type="email"
-                    required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required
                   />
                 </div>
               </div>
@@ -188,9 +194,9 @@ export default function CheckoutPage() {
                 <Input
                   id="phone"
                   type="tel"
-                  required
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  required
                 />
               </div>
             </div>
@@ -200,14 +206,14 @@ export default function CheckoutPage() {
               <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: 'var(--font-heading)' }}>
                 Shipping Address
               </h2>
-
+              
               <div className="space-y-2">
                 <Label htmlFor="address">Street Address *</Label>
                 <Textarea
                   id="address"
-                  required
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  required
                   rows={3}
                 />
               </div>
@@ -238,7 +244,7 @@ export default function CheckoutPage() {
                     <SelectContent>
                       {cities.map((city) => (
                         <SelectItem key={city.id} value={city.id.toString()}>
-                          {city.type} {city.name}
+                          {city.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -267,16 +273,16 @@ export default function CheckoutPage() {
                   <Label htmlFor="postal_code">Postal Code *</Label>
                   <Input
                     id="postal_code"
-                    required
                     value={formData.postal_code}
                     onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+                    required
                   />
                 </div>
               </div>
             </div>
 
             {/* Shipping Method */}
-            {shippingMethods.length > 0 && (
+            {formData.subdistrict_id && shippingMethods.length > 0 && (
               <div className="bg-surface border border-border rounded-lg p-6 space-y-4">
                 <h2 className="text-xl font-semibold text-foreground" style={{ fontFamily: 'var(--font-heading)' }}>
                   Shipping Method
@@ -287,12 +293,15 @@ export default function CheckoutPage() {
                     <SelectValue placeholder="Select shipping method" />
                   </SelectTrigger>
                   <SelectContent>
-                    {shippingMethods.map((method) => (
-                      <SelectItem key={method.id} value={method.id.toString()}>
-                        {method.name} - Rp {parseFloat(method.cost).toLocaleString('id-ID')}
-                        {method.estimated_days && ` (${method.estimated_days})`}
-                      </SelectItem>
-                    ))}
+                    {shippingMethods.map((method) => {
+                      const cost = typeof method.cost === 'number' ? method.cost : parseFloat(method.cost || '0');
+                      return (
+                        <SelectItem key={method.id} value={method.id.toString()}>
+                          {method.name} - Rp {formatPrice(cost)}
+                          {method.estimated_days && ` (${method.estimated_days})`}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -341,30 +350,40 @@ export default function CheckoutPage() {
               </h2>
 
               <div className="space-y-2">
-                {cart.items.map((item) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {item.product.name} x {item.quantity}
-                    </span>
-                    <span className="text-foreground">
-                      Rp {parseFloat(item.subtotal).toLocaleString('id-ID')}
-                    </span>
-                  </div>
-                ))}
+                {cart.items.map((item) => {
+                  // Best-effort read subtotal from unknown fields
+                  const subtotalRaw = (item as any).subtotal;
+                  const itemSubtotal = typeof subtotalRaw === 'number' 
+                    ? subtotalRaw 
+                    : typeof subtotalRaw === 'string' 
+                      ? parseFloat(subtotalRaw) 
+                      : 0;
+                  
+                  return (
+                    <div key={item.id} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {(item as any).product?.name || (item as any).bundle_price_option?.name || 'Item'} x {item.quantity}
+                      </span>
+                      <span className="text-foreground">
+                        Rp {formatPrice(itemSubtotal)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="border-t border-border pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="text-foreground">
-                    Rp {parseFloat(cart.subtotal).toLocaleString('id-ID')}
+                    Rp {formatPrice(cartTotal)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
                   <span className="text-foreground">
                     {formData.shipping_method_id 
-                      ? `Rp ${parseFloat(shippingMethods.find(m => m.id.toString() === formData.shipping_method_id)?.cost || '0').toLocaleString('id-ID')}`
+                      ? `Rp ${formatPrice(shippingCost)}`
                       : 'Select shipping'
                     }
                   </span>
@@ -375,10 +394,7 @@ export default function CheckoutPage() {
                     className="text-xl font-bold text-primary"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    Rp {(
-                      parseFloat(cart.total) + 
-                      parseFloat(shippingMethods.find(m => m.id.toString() === formData.shipping_method_id)?.cost || '0')
-                    ).toLocaleString('id-ID')}
+                    Rp {formatPrice(grandTotal)}
                   </span>
                 </div>
               </div>

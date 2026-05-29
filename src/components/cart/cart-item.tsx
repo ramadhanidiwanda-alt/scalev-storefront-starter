@@ -2,13 +2,23 @@
 
 import Image from 'next/image';
 import { Minus, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCartStore } from '@/lib/stores/cart-store';
 import type { CartItem as CartItemType } from '@/lib/api/types';
-import { useState } from 'react';
+import { formatPrice } from '@/lib/api/helpers';
 
 interface CartItemProps {
   item: CartItemType;
+}
+
+/**
+ * Best-effort accessor for fields that may exist on the API payload but are
+ * not part of the strict OpenAPI shape (additionalProperties: true).
+ */
+function readField<T>(obj: Record<string, unknown>, key: string): T | undefined {
+  const value = obj[key];
+  return value as T | undefined;
 }
 
 export function CartItem({ item }: CartItemProps) {
@@ -18,7 +28,6 @@ export function CartItem({ item }: CartItemProps) {
 
   const handleUpdateQuantity = async (newQuantity: number) => {
     if (newQuantity < 1 || isUpdating) return;
-
     setIsUpdating(true);
     try {
       await updateItem(item.id, newQuantity);
@@ -31,7 +40,6 @@ export function CartItem({ item }: CartItemProps) {
 
   const handleRemove = async () => {
     if (isUpdating) return;
-
     setIsUpdating(true);
     try {
       await removeItem(item.id);
@@ -41,15 +49,45 @@ export function CartItem({ item }: CartItemProps) {
     }
   };
 
-  const imageUrl = item.product.image || '/placeholder-product.png';
+  // Read fields that may come back from the API but aren't strictly typed.
+  const itemRecord = item as unknown as Record<string, unknown>;
+  const name =
+    readField<string>(itemRecord, 'name') ||
+    readField<string>(itemRecord, 'product_name') ||
+    readField<string>(itemRecord, 'bundle_name') ||
+    (item.type === 'bundle_price_option' ? 'Bundle item' : 'Variant item');
+
+  const variantLabel = readField<string>(itemRecord, 'variant_name');
+
+  const image =
+    readField<string>(itemRecord, 'image') ||
+    readField<string>(itemRecord, 'thumbnail') ||
+    (readField<string[]>(itemRecord, 'images') ?? [])[0] ||
+    '/placeholder-product.png';
+
+  const unitPriceRaw =
+    readField<string | number>(itemRecord, 'price') ??
+    readField<string | number>(itemRecord, 'unit_price');
+  const subtotalRaw =
+    readField<string | number>(itemRecord, 'subtotal') ??
+    readField<string | number>(itemRecord, 'total');
+
+  const toNumber = (value: string | number | undefined): number => {
+    if (value === undefined) return 0;
+    const parsed = typeof value === 'number' ? value : parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const unitPrice = toNumber(unitPriceRaw);
+  const subtotal = toNumber(subtotalRaw) || unitPrice * item.quantity;
 
   return (
     <div className="flex gap-4 p-4 bg-background border border-border rounded-lg">
       {/* Image */}
       <div className="relative w-20 h-20 flex-shrink-0 bg-muted rounded-md overflow-hidden">
         <Image
-          src={imageUrl}
-          alt={item.product.name}
+          src={image}
+          alt={name}
           fill
           className="object-cover"
           sizes="80px"
@@ -58,22 +96,17 @@ export function CartItem({ item }: CartItemProps) {
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Product Name */}
-        <h4 className="text-sm font-medium text-foreground line-clamp-2">
-          {item.product.name}
-        </h4>
+        <h4 className="text-sm font-medium text-foreground line-clamp-2">{name}</h4>
 
-        {/* Variant */}
-        {item.variant && (
-          <p className="text-xs text-muted-foreground mt-1">
-            {item.variant.name}
-          </p>
+        {variantLabel && (
+          <p className="text-xs text-muted-foreground mt-1">{variantLabel}</p>
         )}
 
-        {/* Price */}
-        <p className="text-sm font-semibold text-primary mt-2">
-          Rp {parseFloat(item.price).toLocaleString('id-ID')}
-        </p>
+        {unitPrice > 0 && (
+          <p className="text-sm font-semibold text-primary mt-2">
+            {formatPrice(unitPrice)}
+          </p>
+        )}
 
         {/* Quantity Controls */}
         <div className="flex items-center gap-2 mt-3">
@@ -101,7 +134,6 @@ export function CartItem({ item }: CartItemProps) {
             </Button>
           </div>
 
-          {/* Remove Button */}
           <Button
             variant="ghost"
             size="icon"
@@ -115,11 +147,13 @@ export function CartItem({ item }: CartItemProps) {
       </div>
 
       {/* Subtotal */}
-      <div className="text-right">
-        <p className="text-sm font-semibold text-foreground">
-          Rp {parseFloat(item.subtotal).toLocaleString('id-ID')}
-        </p>
-      </div>
+      {subtotal > 0 && (
+        <div className="text-right">
+          <p className="text-sm font-semibold text-foreground">
+            {formatPrice(subtotal)}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

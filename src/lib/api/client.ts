@@ -1,5 +1,7 @@
 import type {
   Product,
+  StorefrontProductDetail,
+  StorefrontItemListResponse,
   Cart,
   AddToCartPayload,
   UpdateCartItemPayload,
@@ -14,12 +16,11 @@ import type {
   Customer,
   LoginPayload,
   RegisterPayload,
-  PaginatedResponse,
   ApiResponse,
   ApiError,
 } from './types';
 
-// Extend window type for env fallback
+// Extend window type for env fallback (Next.js Turbopack workaround)
 declare global {
   interface Window {
     __ENV__?: {
@@ -30,6 +31,10 @@ declare global {
   }
 }
 
+const GUEST_TOKEN_KEY = 'scalev_guest_token';
+const AUTH_TOKENS_KEY = 'scalev_auth_tokens';
+const GUEST_TOKEN_HEADER = 'x-scalev-guest-token';
+
 class ScalevApiClient {
   private baseUrl: string;
   private storeId: string | undefined;
@@ -38,15 +43,18 @@ class ScalevApiClient {
   constructor() {
     const isBrowser = typeof window !== 'undefined';
     const env = isBrowser ? window.__ENV__ : undefined;
-    
-    const API_BASE = env?.NEXT_PUBLIC_SCALEV_API_BASE || 
-                     (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_API_BASE : undefined) ||
-                     'https://api.scalev.com';
-    const STORE_ID = env?.NEXT_PUBLIC_SCALEV_STORE_ID ||
-                     (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_STORE_ID : undefined);
-    const API_KEY = env?.NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY ||
-                    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY : undefined);
-    
+
+    const API_BASE =
+      env?.NEXT_PUBLIC_SCALEV_API_BASE ||
+      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_API_BASE : undefined) ||
+      'https://api.scalev.com';
+    const STORE_ID =
+      env?.NEXT_PUBLIC_SCALEV_STORE_ID ||
+      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_STORE_ID : undefined);
+    const API_KEY =
+      env?.NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY ||
+      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY : undefined);
+
     this.baseUrl = STORE_ID ? `${API_BASE}/v3/stores/${STORE_ID}` : '';
     this.storeId = STORE_ID;
     this.apiKey = API_KEY;
@@ -54,36 +62,51 @@ class ScalevApiClient {
 
   private checkCredentials() {
     if (!this.storeId || !this.apiKey) {
-      throw new Error('Scalev API credentials not configured. Please set NEXT_PUBLIC_SCALEV_STORE_ID and NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY in your environment variables.');
+      throw new Error(
+        'Scalev API credentials not configured. Set NEXT_PUBLIC_SCALEV_STORE_ID and NEXT_PUBLIC_SCALEV_STOREFRONT_API_KEY.'
+      );
     }
   }
 
-  private getHeaders(includeAuth = false): HeadersInit {
+  private getHeaders(includeAuth = false): Record<string, string> {
     this.checkCredentials();
-    
-    const headers: HeadersInit = {
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Scalev-Storefront-Api-Key': this.apiKey!,
     };
 
-    // Add guest token
     if (typeof window !== 'undefined') {
-      const guestToken = localStorage.getItem('scalev_guest_token');
+      const guestToken = localStorage.getItem(GUEST_TOKEN_KEY);
       if (guestToken) {
         headers['X-Scalev-Guest-Token'] = guestToken;
       }
-    }
 
-    // Add auth token
-    if (includeAuth && typeof window !== 'undefined') {
-      const authTokens = localStorage.getItem('scalev_auth_tokens');
-      if (authTokens) {
-        const tokens: AuthTokens = JSON.parse(authTokens);
-        headers['Authorization'] = `Bearer ${tokens.access_token}`;
+      if (includeAuth) {
+        const authTokens = localStorage.getItem(AUTH_TOKENS_KEY);
+        if (authTokens) {
+          try {
+            const tokens: AuthTokens = JSON.parse(authTokens);
+            headers['Authorization'] = `Bearer ${tokens.access_token}`;
+          } catch {
+            // Ignore corrupted token
+          }
+        }
       }
     }
 
     return headers;
+  }
+
+  /**
+   * Persist guest token returned by the API (header `x-scalev-guest-token`).
+   */
+  private captureGuestToken(response: Response) {
+    if (typeof window === 'undefined') return;
+    const token = response.headers.get(GUEST_TOKEN_HEADER);
+    if (token) {
+      localStorage.setItem(GUEST_TOKEN_KEY, token);
+    }
   }
 
   private async request<T>(
@@ -92,14 +115,15 @@ class ScalevApiClient {
     includeAuth = false
   ): Promise<T> {
     this.checkCredentials();
-    
+
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.getHeaders(includeAuth);
-    
+
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timeoutId = typeof window !== 'undefined' && controller
-      ? window.setTimeout(() => controller.abort(), 15000)
-      : null;
+    const timeoutId =
+      typeof window !== 'undefined' && controller
+        ? window.setTimeout(() => controller.abort(), 15000)
+        : null;
 
     try {
       const response = await fetch(url, {
@@ -109,21 +133,31 @@ class ScalevApiClient {
         signal: options.signal || controller?.signal,
         headers: {
           ...headers,
-          ...options.headers,
+          ...((options.headers as Record<string, string>) || {}),
         },
       });
 
+      this.captureGuestToken(response);
+
       if (!response.ok) {
-        const error = (await response.json().catch(() => null)) as (ApiError & { error?: string }) | null;
-        throw new Error(error?.message || error?.error || `API request failed (${response.status})`);
+        const error = (await response.json().catch(() => null)) as
+          | (ApiError & { error?: string })
+          | null;
+        throw new Error(
+          error?.message || error?.error || `API request failed (${response.status})`
+        );
       }
 
-      return await response.json();
+      // Handle empty responses (DELETE)
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      return (await response.json()) as T;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        throw new Error('Scalev API request timeout. Check Storefront API origin and credentials.');
+        throw new Error('Scalev API request timeout. Check your network and credentials.');
       }
-
       console.error('API request error:', error);
       throw error;
     } finally {
@@ -133,58 +167,69 @@ class ScalevApiClient {
     }
   }
 
-  // Products
+  // ==========================================================================
+  // Catalog (items / products)
+  // ==========================================================================
+
   async getProducts(params?: {
-    page?: number;
     per_page?: number;
-    category_id?: number;
+    cursor?: string;
+    direction?: 'next' | 'previous';
+    category_id?: number | string;
     search?: string;
-  }): Promise<PaginatedResponse<Product>> {
+  }): Promise<StorefrontItemListResponse> {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.per_page) queryParams.append('per_page', params.per_page.toString());
+    if (params?.cursor) queryParams.append('cursor', params.cursor);
+    if (params?.direction) queryParams.append('direction', params.direction);
     if (params?.category_id) queryParams.append('category_id', params.category_id.toString());
     if (params?.search) queryParams.append('search', params.search);
 
     const query = queryParams.toString();
-    return this.request<PaginatedResponse<Product>>(
+    return this.request<StorefrontItemListResponse>(
       `/public/items${query ? `?${query}` : ''}`
     );
   }
 
-  async getProduct(slug: string): Promise<ApiResponse<Product>> {
-    return this.request<ApiResponse<Product>>(`/public/products/${slug}`);
+  async getProduct(slug: string): Promise<StorefrontProductDetail> {
+    return this.request<StorefrontProductDetail>(`/public/products/${slug}`);
   }
 
-  // Cart
-  async getCart(): Promise<ApiResponse<Cart>> {
-    return this.request<ApiResponse<Cart>>('/public/cart');
+  // ==========================================================================
+  // Cart (guest)
+  // ==========================================================================
+
+  async getCart(): Promise<Cart> {
+    return this.request<Cart>('/public/cart');
   }
 
-  async addToCart(payload: AddToCartPayload): Promise<ApiResponse<Cart>> {
-    return this.request<ApiResponse<Cart>>('/public/cart/items', {
+  async addToCart(payload: AddToCartPayload): Promise<Cart> {
+    return this.request<Cart>('/public/cart/items', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   }
 
   async updateCartItem(
-    itemId: string,
+    itemId: number | string,
     payload: UpdateCartItemPayload
-  ): Promise<ApiResponse<Cart>> {
-    return this.request<ApiResponse<Cart>>(`/public/cart/items/${itemId}`, {
+  ): Promise<Cart> {
+    return this.request<Cart>(`/public/cart/items/${itemId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
   }
 
-  async removeCartItem(itemId: string): Promise<ApiResponse<Cart>> {
-    return this.request<ApiResponse<Cart>>(`/public/cart/items/${itemId}`, {
+  async removeCartItem(itemId: number | string): Promise<Cart | void> {
+    return this.request<Cart | void>(`/public/cart/items/${itemId}`, {
       method: 'DELETE',
     });
   }
 
+  // ==========================================================================
   // Locations
+  // ==========================================================================
+
   async getProvinces(): Promise<ApiResponse<Province[]>> {
     return this.request<ApiResponse<Province[]>>('/public/provinces');
   }
@@ -197,7 +242,10 @@ class ScalevApiClient {
     return this.request<ApiResponse<Subdistrict[]>>(`/public/cities/${cityId}/subdistricts`);
   }
 
+  // ==========================================================================
   // Shipping
+  // ==========================================================================
+
   async getShippingMethods(params: {
     subdistrict_id: number;
     weight?: number;
@@ -208,18 +256,23 @@ class ScalevApiClient {
     if (params.weight) {
       queryParams.append('weight', params.weight.toString());
     }
-
     return this.request<ApiResponse<ShippingMethod[]>>(
       `/public/shipping-methods?${queryParams.toString()}`
     );
   }
 
+  // ==========================================================================
   // Payment
+  // ==========================================================================
+
   async getPaymentMethods(): Promise<ApiResponse<PaymentMethod[]>> {
     return this.request<ApiResponse<PaymentMethod[]>>('/public/payment-methods');
   }
 
+  // ==========================================================================
   // Checkout
+  // ==========================================================================
+
   async checkout(payload: CheckoutPayload): Promise<ApiResponse<Order>> {
     return this.request<ApiResponse<Order>>('/public/checkout', {
       method: 'POST',
@@ -227,12 +280,18 @@ class ScalevApiClient {
     });
   }
 
+  // ==========================================================================
   // Orders
+  // ==========================================================================
+
   async getOrder(secretSlug: string): Promise<ApiResponse<Order>> {
     return this.request<ApiResponse<Order>>(`/public/orders/${secretSlug}`);
   }
 
+  // ==========================================================================
   // Auth
+  // ==========================================================================
+
   async login(payload: LoginPayload): Promise<ApiResponse<AuthTokens>> {
     return this.request<ApiResponse<AuthTokens>>('/public/auth/login', {
       method: 'POST',
@@ -255,20 +314,18 @@ class ScalevApiClient {
     await this.request('/public/auth/logout', { method: 'POST' }, true);
   }
 
+  // ==========================================================================
   // Guest Token Management
+  // ==========================================================================
+
   initGuestToken(): void {
-    if (typeof window !== 'undefined') {
-      const existingToken = localStorage.getItem('scalev_guest_token');
-      if (!existingToken) {
-        const guestToken = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('scalev_guest_token', guestToken);
-      }
-    }
+    // Scalev API issues guest tokens via response headers automatically.
+    // No-op kept for backwards compatibility.
   }
 
   clearGuestToken(): void {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('scalev_guest_token');
+      localStorage.removeItem(GUEST_TOKEN_KEY);
     }
   }
 }
@@ -284,6 +341,7 @@ function getApiClient() {
 
 export const apiClient = {
   initGuestToken: () => getApiClient().initGuestToken(),
+  clearGuestToken: () => getApiClient().clearGuestToken(),
   getProducts: (...args: Parameters<ScalevApiClient['getProducts']>) => getApiClient().getProducts(...args),
   getProduct: (...args: Parameters<ScalevApiClient['getProduct']>) => getApiClient().getProduct(...args),
   getCart: (...args: Parameters<ScalevApiClient['getCart']>) => getApiClient().getCart(...args),

@@ -6,17 +6,24 @@ import { useCartStore } from '@/lib/stores/cart-store';
 import { CartItem } from './cart-item';
 import { ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { formatPrice } from '@/lib/api/helpers';
 
 interface CartDrawerProps {
   open: boolean;
   onClose: () => void;
 }
 
+function toNumber(value: string | number | undefined | null): number {
+  if (value === undefined || value === null) return 0;
+  const parsed = typeof value === 'number' ? value : parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function CartDrawer({ open, onClose }: CartDrawerProps) {
   const cart = useCartStore((state) => state.cart);
-  const isLoading = useCartStore((state) => state.isLoading);
 
   const isEmpty = !cart || cart.items.length === 0;
+  const total = toNumber(cart?.total);
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -46,14 +53,14 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
 
             {/* Footer */}
             <div className="border-t border-border pt-4 space-y-4">
-              {/* Subtotal */}
+              {/* Total */}
               <div className="flex justify-between items-center">
-                <span className="text-base font-medium">Subtotal</span>
-                <span 
+                <span className="text-base font-medium">Total</span>
+                <span
                   className="text-lg font-semibold text-primary"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  Rp {parseFloat(cart.subtotal).toLocaleString('id-ID')}
+                  {formatPrice(total)}
                 </span>
               </div>
 

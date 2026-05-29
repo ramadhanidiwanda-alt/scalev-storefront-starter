@@ -7,6 +7,7 @@ import { CartItem } from '@/components/cart/cart-item';
 import { Button } from '@/components/ui/button';
 import { ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { formatPrice } from '@/lib/api/helpers';
 
 export default function CartPage() {
   const router = useRouter();
@@ -54,6 +55,8 @@ export default function CartPage() {
     );
   }
 
+  const totalPrice = typeof cart.total === 'number' ? cart.total : parseFloat(cart.total || '0');
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 
@@ -83,12 +86,6 @@ export default function CartPage() {
 
             <div className="space-y-3 mb-6">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="text-foreground">
-                  Rp {parseFloat(cart.subtotal).toLocaleString('id-ID')}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Shipping</span>
                 <span className="text-foreground">Calculated at checkout</span>
               </div>
@@ -98,7 +95,7 @@ export default function CartPage() {
                   className="text-xl font-bold text-primary"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  Rp {parseFloat(cart.total).toLocaleString('id-ID')}
+                  Rp {formatPrice(totalPrice)}
                 </span>
               </div>
             </div>
