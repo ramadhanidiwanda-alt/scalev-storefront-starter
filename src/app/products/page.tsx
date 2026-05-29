@@ -5,6 +5,7 @@ import { ProductGrid } from '@/components/product/product-grid';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { apiClient } from '@/lib/api/client';
+import { isBundle } from '@/lib/api/helpers';
 import type { Product } from '@/lib/api/types';
 
 export default function ProductsPage() {
@@ -17,7 +18,9 @@ export default function ProductsPage() {
       setError(null);
       setIsLoading(true);
       const response = await apiClient.getProducts({ per_page: 20 });
-      setProducts(response.data);
+      // Filter out bundles, only show products with variants
+      const productsOnly = response.data.filter(item => !isBundle(item));
+      setProducts(productsOnly);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
@@ -29,7 +32,9 @@ export default function ProductsPage() {
     const loadProducts = async () => {
       try {
         const response = await apiClient.getProducts({ per_page: 20 });
-        setProducts(response.data);
+        // Filter out bundles, only show products with variants
+        const productsOnly = response.data.filter(item => !isBundle(item));
+        setProducts(productsOnly);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load products');
       } finally {
