@@ -231,15 +231,15 @@ class ScalevApiClient {
   // ==========================================================================
 
   async getProvinces(): Promise<ApiResponse<Province[]>> {
-    return this.request<ApiResponse<Province[]>>('/public/provinces');
+    return this.request<ApiResponse<Province[]>>('/public/locations/provinces');
   }
 
   async getCities(provinceId: number): Promise<ApiResponse<City[]>> {
-    return this.request<ApiResponse<City[]>>(`/public/provinces/${provinceId}/cities`);
+    return this.request<ApiResponse<City[]>>(`/public/locations/cities?province_id=${provinceId}`);
   }
 
   async getSubdistricts(cityId: number): Promise<ApiResponse<Subdistrict[]>> {
-    return this.request<ApiResponse<Subdistrict[]>>(`/public/cities/${cityId}/subdistricts`);
+    return this.request<ApiResponse<Subdistrict[]>>(`/public/locations/subdistricts?city_id=${cityId}`);
   }
 
   // ==========================================================================
