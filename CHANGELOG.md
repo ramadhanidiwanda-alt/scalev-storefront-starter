@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Product card navigation to detail page
 - Image loading from Scalev CDN
 - Type safety across all API interactions
+- Checkout location API endpoints (provinces, cities, subdistricts) returning 404
 
 ### Infrastructure
 - Vercel preview deployments configured with environment variables
