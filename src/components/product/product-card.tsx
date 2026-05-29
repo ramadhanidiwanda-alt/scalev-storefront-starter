@@ -3,21 +3,21 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { Product } from '@/lib/api/types';
+import { ShoppingCart } from 'lucide-react';
 import { useCartStore } from '@/lib/stores/cart-store';
+import type { Product } from '@/lib/api/types';
 import {
-  buildAddToCartPayload,
+  getProductMinPrice,
+  getProductImage,
+  isProductAvailable,
+  hasPriceRange,
   formatPrice,
   formatPriceRange,
-  getProductImage,
-  getProductMinPrice,
-  hasPriceRange,
   isBundle,
-  isProductAvailable,
+  buildAddToCartPayload,
 } from '@/lib/api/helpers';
 
 interface ProductCardProps {
@@ -41,12 +41,6 @@ export function ProductCard({ product }: ProductCardProps) {
 
     if (!available || isAdding) return;
 
-    // Variant-based products require picking a variant first.
-    if (!isBundle(product)) {
-      router.push(detailHref);
-      return;
-    }
-
     setIsAdding(true);
     try {
       const payload = buildAddToCartPayload(product, 1);
@@ -58,12 +52,9 @@ export function ProductCard({ product }: ProductCardProps) {
     }
   };
 
-  const ctaLabel = (() => {
-    if (!available) return 'Out of stock';
-    if (isAdding) return 'Adding…';
-    if (!isBundle(product)) return 'View options';
-    return 'Add to cart';
-  })();
+  // For variant-based products, entire card is clickable to detail page
+  // For bundles, show add to cart button
+  const isBundleProduct = isBundle(product);
 
   return (
     <Link href={detailHref}>
@@ -85,7 +76,7 @@ export function ProductCard({ product }: ProductCardProps) {
                 Out of Stock
               </Badge>
             )}
-            {isBundle(product) && available && (
+            {isBundleProduct && available && (
               <Badge className="bg-primary text-on-primary">Bundle</Badge>
             )}
           </div>
@@ -114,16 +105,24 @@ export function ProductCard({ product }: ProductCardProps) {
             )}
           </div>
 
-          {/* Add to Cart Button */}
-          <Button
-            onClick={handleAddToCart}
-            disabled={!available || isAdding}
-            className="w-full bg-primary hover:bg-primary-hover text-on-primary transition-colors duration-150"
-            size="sm"
-          >
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            {ctaLabel}
-          </Button>
+          {/* Action Button */}
+          {isBundleProduct ? (
+            // Bundle: Show add to cart button
+            <Button
+              onClick={handleAddToCart}
+              disabled={!available || isAdding}
+              className="w-full bg-primary hover:bg-primary-hover text-on-primary transition-colors duration-150"
+              size="sm"
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              {isAdding ? 'Adding...' : 'Add to cart'}
+            </Button>
+          ) : (
+            // Product with variants: Show view details text (card itself is clickable via Link)
+            <div className="w-full py-2 px-4 text-center text-sm font-medium text-primary border border-primary rounded-md group-hover:bg-primary group-hover:text-on-primary transition-colors duration-150">
+              View Details
+            </div>
+          )}
         </div>
       </div>
     </Link>
